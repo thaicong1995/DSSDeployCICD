@@ -28,11 +28,19 @@
     </scm>
     <properties>
         <java.version>21</java.version>
+        <local.ocp.maxRam>2560m</local.ocp.maxRam>
+        <local.ocp.initialRamPercentage>25.0</local.ocp.initialRamPercentage>
+        <local.ocp.maxRamPercentage>70.0</local.ocp.maxRamPercentage>
+        <local.ocp.activeProcessorCount>2</local.ocp.activeProcessorCount>
     </properties>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -94,5 +102,15 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>local-ocp</id>
+            <properties>
+                <spring-boot.run.profiles>local-ocp</spring-boot.run.profiles>
+                <spring-boot.run.jvmArguments>-XX:MaxRAM=${local.ocp.maxRam} -XX:InitialRAMPercentage=${local.ocp.initialRamPercentage} -XX:MaxRAMPercentage=${local.ocp.maxRamPercentage} -XX:ActiveProcessorCount=${local.ocp.activeProcessorCount} -XX:+UseContainerSupport</spring-boot.run.jvmArguments>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>

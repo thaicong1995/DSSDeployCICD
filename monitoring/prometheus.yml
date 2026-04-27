@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: demo1
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - demo1-local-ocp:8080

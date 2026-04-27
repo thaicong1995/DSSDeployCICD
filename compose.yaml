@@ -1,0 +1,19 @@
+services:
+  demo1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: demo1:local-ocp
+    container_name: demo1-local-ocp
+    ports:
+      - "8080:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -XX:InitialRAMPercentage=25.0
+        -XX:MaxRAMPercentage=70.0
+        -XX:ActiveProcessorCount=2
+        -XX:+UseContainerSupport
+        -XX:+ExitOnOutOfMemoryError
+    mem_limit: 2560m
+    cpus: 2.0
+    restart: unless-stopped

@@ -5,9 +5,22 @@
 !src/
 !src/**
 src/test
+!scripts/
+!scripts/**
+!monitoring/
+!monitoring/**
+!k8s/
+!k8s/**
+!Jenkinsfile
+!.ci/
+!.ci/**
 
 # Keep pom.xml
 !pom.xml
+
+# Keep Docker assets
+!Dockerfile
+!compose.yaml
 
 # Keep gitignore
 !.gitignore
