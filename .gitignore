@@ -1,0 +1,13 @@
+# Ignore everything
+*
+
+# Keep source
+!src/
+!src/**
+src/test
+
+# Keep pom.xml
+!pom.xml
+
+# Keep gitignore
+!.gitignore
