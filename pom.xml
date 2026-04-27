@@ -32,6 +32,7 @@
         <local.ocp.initialRamPercentage>25.0</local.ocp.initialRamPercentage>
         <local.ocp.maxRamPercentage>70.0</local.ocp.maxRamPercentage>
         <local.ocp.activeProcessorCount>2</local.ocp.activeProcessorCount>
+        <local.ocp.gc.maxPauseMillis>1000</local.ocp.gc.maxPauseMillis>
     </properties>
     <dependencies>
         <dependency>
@@ -108,7 +109,7 @@
             <id>local-ocp</id>
             <properties>
                 <spring-boot.run.profiles>local-ocp</spring-boot.run.profiles>
-                <spring-boot.run.jvmArguments>-XX:MaxRAM=${local.ocp.maxRam} -XX:InitialRAMPercentage=${local.ocp.initialRamPercentage} -XX:MaxRAMPercentage=${local.ocp.maxRamPercentage} -XX:ActiveProcessorCount=${local.ocp.activeProcessorCount} -XX:+UseContainerSupport</spring-boot.run.jvmArguments>
+                <spring-boot.run.jvmArguments>-XX:MaxRAM=${local.ocp.maxRam} -XX:InitialRAMPercentage=${local.ocp.initialRamPercentage} -XX:MaxRAMPercentage=${local.ocp.maxRamPercentage} -XX:ActiveProcessorCount=${local.ocp.activeProcessorCount} -XX:+UseContainerSupport -XX:+UseZGC -XX:MaxGCPauseMillis=${local.ocp.gc.maxPauseMillis}</spring-boot.run.jvmArguments>
             </properties>
         </profile>
     </profiles>

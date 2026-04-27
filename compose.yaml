@@ -7,13 +7,55 @@ services:
     container_name: demo1-local-ocp
     ports:
       - "8080:8080"
+      - "19113:19113"
     environment:
       JAVA_TOOL_OPTIONS: >-
         -XX:InitialRAMPercentage=25.0
         -XX:MaxRAMPercentage=70.0
         -XX:ActiveProcessorCount=2
         -XX:+UseContainerSupport
+        -XX:+UseZGC
+        -XX:MaxGCPauseMillis=1000
         -XX:+ExitOnOutOfMemoryError
     mem_limit: 2560m
     cpus: 2.0
     restart: unless-stopped
+    networks:
+      - demo1-local-ocp
+
+  prometheus:
+    image: docker.io/prom/prometheus:v2.54.1
+    container_name: prometheus-local-ocp
+    depends_on:
+      - demo1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+    networks:
+      - demo1-local-ocp
+
+  grafana:
+    image: docker.io/grafana/grafana:11.1.4
+    container_name: grafana-local-ocp
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "13000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - demo1-local-ocp
+
+networks:
+  demo1-local-ocp:
+    name: demo1-local-ocp-net

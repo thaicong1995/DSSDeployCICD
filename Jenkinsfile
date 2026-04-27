@@ -24,6 +24,9 @@ pipeline {
         PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
         APP_PORT = ''
         REPLICAS = ''
+        MIN_REPLICAS = ''
+        MAX_REPLICAS = ''
+        CPU_TARGET_UTILIZATION = ''
         CPU_LIMIT = ''
         MEMORY_LIMIT = ''
         MEMORY_REQUEST = ''
@@ -39,6 +42,7 @@ pipeline {
         SERVICE_ACCOUNT_NAME = ''
         CONFIG_KEYSTORE_TEST = ''
         SECRET_KEYSTORE_PASSWORD = ''
+        IMAGE_PULL_POLICY = ''
         CLI_BIN = ''
     }
 
@@ -56,6 +60,9 @@ pipeline {
                         APP_NAME: 'demo1',
                         SERVICE_PORT: '8080',
                         REPLICAS: '1',
+                        MIN_REPLICAS: '1',
+                        MAX_REPLICAS: '3',
+                        CPU_TARGET_UTILIZATION: '25',
                         CPU_REQUEST: '500m',
                         CPU_LIMIT: '2',
                         MEMORY_REQUEST: '1024Mi',
@@ -63,12 +70,13 @@ pipeline {
                         INGRESS_ENABLED: 'true',
                         INGRESS_HOST: 'demo1.apps.example.local',
                         INGRESS_CLASS_NAME: 'nginx',
-                        ROUTE_ENABLED: 'true',
+                        ROUTE_ENABLED: 'false',
                         ROUTE_HOST: 'demo1.apps.example.local',
                         IMAGE_PULL_SECRET: '',
                         SERVICE_ACCOUNT_NAME: 'demo1',
                         CONFIG_KEYSTORE_TEST: 'testsign',
-                        SECRET_KEYSTORE_PASSWORD: ''
+                        SECRET_KEYSTORE_PASSWORD: '',
+                        IMAGE_PULL_POLICY: 'Always'
                     ]
                     def envFile = fileExists(env.CI_ENV_FILE) ? readProperties file: env.CI_ENV_FILE : [:]
                     def cfg = defaults + envFile
@@ -78,6 +86,9 @@ pipeline {
                     env.NAMESPACE = params.NAMESPACE?.trim() ?: cfg.NAMESPACE
                     env.APP_PORT = params.SERVICE_PORT?.trim() ?: cfg.SERVICE_PORT
                     env.REPLICAS = params.REPLICAS?.trim() ?: cfg.REPLICAS
+                    env.MIN_REPLICAS = cfg.MIN_REPLICAS
+                    env.MAX_REPLICAS = cfg.MAX_REPLICAS
+                    env.CPU_TARGET_UTILIZATION = cfg.CPU_TARGET_UTILIZATION
                     env.CPU_REQUEST = cfg.CPU_REQUEST
                     env.CPU_LIMIT = cfg.CPU_LIMIT
                     env.MEMORY_REQUEST = cfg.MEMORY_REQUEST
@@ -93,6 +104,7 @@ pipeline {
                     env.SERVICE_ACCOUNT_NAME = cfg.SERVICE_ACCOUNT_NAME
                     env.CONFIG_KEYSTORE_TEST = cfg.CONFIG_KEYSTORE_TEST
                     env.SECRET_KEYSTORE_PASSWORD = cfg.SECRET_KEYSTORE_PASSWORD
+                    env.IMAGE_PULL_POLICY = cfg.IMAGE_PULL_POLICY
                     env.CLI_BIN = sh(script: 'command -v oc >/dev/null 2>&1 && echo oc || echo kubectl', returnStdout: true).trim()
                     env.GIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     env.RESOLVED_IMAGE_TAG = params.IMAGE_TAG?.trim() ? params.IMAGE_TAG.trim() : "${env.BUILD_NUMBER}-${env.GIT_SHA}"
@@ -135,85 +147,34 @@ pipeline {
                     sh '''
                         export KUBECONFIG="$KUBECONFIG_FILE"
                         CLI_BIN="${CLI_BIN}"
-                        mkdir -p .rendered
-
-                        sed \
-                          -e "s|__APP_NAME__|$APP_NAME|g" \
-                          -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                          -e "s|__IMAGE__|$IMAGE|g" \
-                          -e "s|__APP_PORT__|$APP_PORT|g" \
-                          -e "s|__REPLICAS__|$REPLICAS|g" \
-                          -e "s|__CPU_REQUEST__|$CPU_REQUEST|g" \
-                          -e "s|__CPU_LIMIT__|$CPU_LIMIT|g" \
-                          -e "s|__MEMORY_REQUEST__|$MEMORY_REQUEST|g" \
-                          -e "s|__MEMORY_LIMIT__|$MEMORY_LIMIT|g" \
-                          -e "s|__SERVICE_ACCOUNT_NAME__|$SERVICE_ACCOUNT_NAME|g" \
-                          k8s/deployment.yaml > .rendered/deployment.yaml
-
-                        awk -v secret="$IMAGE_PULL_SECRET" '
-                          /__IMAGE_PULL_SECRETS_BLOCK__/ {
-                            if (secret != "") {
-                              print "      imagePullSecrets:"
-                              print "        - name: " secret
-                            }
-                            next
-                          }
-                          { print }
-                        ' .rendered/deployment.yaml > .rendered/deployment.yaml.tmp && mv .rendered/deployment.yaml.tmp .rendered/deployment.yaml
-
-                        sed \
-                          -e "s|__APP_NAME__|$APP_NAME|g" \
-                          -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                          -e "s|__APP_PORT__|$APP_PORT|g" \
-                          k8s/service.yaml > .rendered/service.yaml
-
-                        sed \
-                          -e "s|__APP_NAME__|$APP_NAME|g" \
-                          -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                          -e "s|__CONFIG_KEYSTORE_TEST__|$CONFIG_KEYSTORE_TEST|g" \
-                          k8s/configmap.yaml > .rendered/configmap.yaml
-
-                        SECRET_KEYSTORE_PASSWORD_B64="$(printf '%s' "$SECRET_KEYSTORE_PASSWORD" | base64 -w0)"
-                        sed \
-                          -e "s|__APP_NAME__|$APP_NAME|g" \
-                          -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                          -e "s|__SECRET_KEYSTORE_PASSWORD_B64__|$SECRET_KEYSTORE_PASSWORD_B64|g" \
-                          k8s/secret.yaml > .rendered/secret.yaml
-
-                        if [ "$INGRESS_ENABLED" = "true" ]; then
-                          sed \
-                            -e "s|__APP_NAME__|$APP_NAME|g" \
-                            -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                            -e "s|__APP_PORT__|$APP_PORT|g" \
-                            -e "s|__INGRESS_HOST__|$INGRESS_HOST|g" \
-                            -e "s|__INGRESS_CLASS_NAME__|$INGRESS_CLASS_NAME|g" \
-                            k8s/ingress.yaml > .rendered/ingress.yaml
+                        ROUTE_ENABLED_RENDER="$ROUTE_ENABLED"
+                        if ! $CLI_BIN api-resources --api-group=route.openshift.io -o name 2>/dev/null | grep -qx 'routes'; then
+                          ROUTE_ENABLED_RENDER="false"
                         fi
 
-                        if [ "$ROUTE_ENABLED" = "true" ]; then
-                          sed \
-                            -e "s|__APP_NAME__|$APP_NAME|g" \
-                            -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                            -e "s|__APP_PORT__|$APP_PORT|g" \
-                            -e "s|__ROUTE_HOST__|$ROUTE_HOST|g" \
-                            k8s/route.yaml > .rendered/route.yaml
-                        fi
-
-                        sed \
-                          -e "s|__APP_NAME__|$APP_NAME|g" \
-                          -e "s|__NAMESPACE__|$NAMESPACE|g" \
-                          k8s/serviceaccount.yaml > .rendered/serviceaccount.yaml
-
-                        awk -v secret="$IMAGE_PULL_SECRET" '
-                          /__IMAGE_PULL_SECRETS_BLOCK__/ {
-                            if (secret != "") {
-                              print "imagePullSecrets:"
-                              print "  - name: " secret
-                            }
-                            next
-                          }
-                          { print }
-                        ' .rendered/serviceaccount.yaml > .rendered/serviceaccount.yaml.tmp && mv .rendered/serviceaccount.yaml.tmp .rendered/serviceaccount.yaml
+                        APP_NAME="$APP_NAME" \
+                        NAMESPACE="$NAMESPACE" \
+                        APP_PORT="$APP_PORT" \
+                        REPLICAS="$REPLICAS" \
+                        IMAGE="$IMAGE" \
+                        IMAGE_PULL_POLICY="$IMAGE_PULL_POLICY" \
+                        CPU_REQUEST="$CPU_REQUEST" \
+                        CPU_LIMIT="$CPU_LIMIT" \
+                        MEMORY_REQUEST="$MEMORY_REQUEST" \
+                        MEMORY_LIMIT="$MEMORY_LIMIT" \
+                        MIN_REPLICAS="$MIN_REPLICAS" \
+                        MAX_REPLICAS="$MAX_REPLICAS" \
+                        CPU_TARGET_UTILIZATION="$CPU_TARGET_UTILIZATION" \
+                        INGRESS_ENABLED="$INGRESS_ENABLED" \
+                        INGRESS_HOST="$INGRESS_HOST" \
+                        INGRESS_CLASS_NAME="$INGRESS_CLASS_NAME" \
+                        ROUTE_ENABLED="$ROUTE_ENABLED_RENDER" \
+                        ROUTE_HOST="$ROUTE_HOST" \
+                        IMAGE_PULL_SECRET="$IMAGE_PULL_SECRET" \
+                        SERVICE_ACCOUNT_NAME="$SERVICE_ACCOUNT_NAME" \
+                        CONFIG_KEYSTORE_TEST="$CONFIG_KEYSTORE_TEST" \
+                        SECRET_KEYSTORE_PASSWORD="$SECRET_KEYSTORE_PASSWORD" \
+                        ./scripts/render-k8s.sh
 
                         $CLI_BIN create namespace "$NAMESPACE" --dry-run=client -o yaml | $CLI_BIN apply -f -
                         $CLI_BIN apply -f .rendered/configmap.yaml
@@ -221,6 +182,8 @@ pipeline {
                         $CLI_BIN apply -f .rendered/serviceaccount.yaml
                         $CLI_BIN apply -f .rendered/deployment.yaml
                         $CLI_BIN apply -f .rendered/service.yaml
+                        $CLI_BIN apply -f .rendered/servicemonitor.yaml || true
+                        $CLI_BIN apply -f .rendered/hpa.yaml
                         if [ -f .rendered/ingress.yaml ]; then
                           $CLI_BIN apply -f .rendered/ingress.yaml
                         fi
@@ -241,6 +204,8 @@ pipeline {
                         $CLI_BIN -n "$NAMESPACE" rollout status deployment/"$APP_NAME" --timeout=300s
                         $CLI_BIN -n "$NAMESPACE" get pods -l app="$APP_NAME" -o wide
                         $CLI_BIN -n "$NAMESPACE" top pods -l app="$APP_NAME" || true
+                        $CLI_BIN -n "$NAMESPACE" get hpa "$APP_NAME" || true
+                        $CLI_BIN -n "$NAMESPACE" describe hpa "$APP_NAME" || true
                         $CLI_BIN -n "$NAMESPACE" get svc "$APP_NAME" -o wide || true
                         $CLI_BIN -n "$NAMESPACE" get ingress "$APP_NAME" || true
                         $CLI_BIN -n "$NAMESPACE" get route "$APP_NAME" || true
@@ -282,6 +247,7 @@ pipeline {
                     CLI_BIN="${CLI_BIN}"
                     $CLI_BIN -n "$NAMESPACE" get pods -l app="$APP_NAME" -o wide || true
                     $CLI_BIN -n "$NAMESPACE" get rs -l app="$APP_NAME" || true
+                    $CLI_BIN -n "$NAMESPACE" get hpa "$APP_NAME" || true
                     $CLI_BIN -n "$NAMESPACE" get svc "$APP_NAME" -o wide || true
                     $CLI_BIN -n "$NAMESPACE" get ingress "$APP_NAME" || true
                     $CLI_BIN -n "$NAMESPACE" get route "$APP_NAME" || true

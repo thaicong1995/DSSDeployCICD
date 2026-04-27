@@ -24,6 +24,8 @@ spec:
       serviceAccountName: __SERVICE_ACCOUNT_NAME__
       automountServiceAccountToken: false
       securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -31,7 +33,7 @@ __IMAGE_PULL_SECRETS_BLOCK__
       containers:
         - name: __APP_NAME__
           image: __IMAGE__
-          imagePullPolicy: Always
+          imagePullPolicy: __IMAGE_PULL_POLICY__
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -42,22 +44,14 @@ __IMAGE_PULL_SECRETS_BLOCK__
             - containerPort: __APP_PORT__
               name: http
           env:
-            - name: KEYSTORE_TEST
-              valueFrom:
-                configMapKeyRef:
-                  name: __APP_NAME__
-                  key: KEYSTORE_TEST
-            - name: KEYSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: __APP_NAME__
-                  key: KEYSTORE_PASSWORD
             - name: JAVA_TOOL_OPTIONS
               value: >-
                 -XX:InitialRAMPercentage=25.0
                 -XX:MaxRAMPercentage=70.0
                 -XX:ActiveProcessorCount=2
                 -XX:+UseContainerSupport
+                -XX:+UseZGC
+                -XX:MaxGCPauseMillis=1000
                 -XX:+ExitOnOutOfMemoryError
           resources:
             requests:
